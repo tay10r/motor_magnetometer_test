@@ -3,9 +3,11 @@
 
 #include <vector>
 
-#include "common.h"
+#include <motor_test/common.h>
 
-int main(int argc, char** argv) {
+int
+main(int argc, char** argv)
+{
   const char* path = "out.bin";
 
   if (argc == 2) {
@@ -21,12 +23,12 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  std::vector<packet> packets;
+  std::vector<mt::packet> packets;
 
   int packet_index = 0;
 
   while (!feof(infile)) {
-    packet p;
+    mt::packet p;
 
     size_t read_size = fread(&p, sizeof(p), 1, infile);
     if (read_size != 1) {

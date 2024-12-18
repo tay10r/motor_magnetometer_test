@@ -1,13 +1,14 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <motor_test/common.h>
 #include <stdio.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
-#include "common.h"
-
-int main() {
+int
+main()
+{
   FILE* outfile = fopen("out.bin", "wb");
 
   const char* portname = "/dev/ttyACM0";
@@ -28,14 +29,14 @@ int main() {
   }
 
   // Set up the baud rate
-  cfsetospeed(&tty, B9600);  // Output speed
-  cfsetispeed(&tty, B9600);  // Input speed
+  cfsetospeed(&tty, B9600); // Output speed
+  cfsetispeed(&tty, B9600); // Input speed
 
   // Configure 8N1 mode (8 data bits, no parity, 1 stop bit)
-  tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;  // 8 data bits
-  tty.c_cflag &= ~PARENB;                      // No parity
-  tty.c_cflag &= ~CSTOPB;                      // 1 stop bit
-  tty.c_cflag |= CREAD | CLOCAL;  // Enable receiver, ignore modem control lines
+  tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8; // 8 data bits
+  tty.c_cflag &= ~PARENB;                     // No parity
+  tty.c_cflag &= ~CSTOPB;                     // 1 stop bit
+  tty.c_cflag |= CREAD | CLOCAL; // Enable receiver, ignore modem control lines
 
   // Configure raw input mode
   tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
@@ -52,7 +53,7 @@ int main() {
   // Read data from the serial port
   int num_samples = 0;
   const int max_samples = 4096;
-  packet p;
+  mt::packet p;
 
   while (num_samples < max_samples) {
     const ssize_t bytes_read = read(fd, &p, sizeof(p));
@@ -63,8 +64,8 @@ int main() {
         continue;
       }
       num_samples++;
-      printf("[%d/%d]: Read %zd bytes.\n", num_samples, max_samples,
-             bytes_read);
+      printf(
+        "[%d/%d]: Read %zd bytes.\n", num_samples, max_samples, bytes_read);
       fwrite(&p, sizeof(p), 1, outfile);
     } else if (bytes_read < 0) {
       perror("Error reading from serial port");
