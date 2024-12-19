@@ -17,7 +17,7 @@ log_info(const char* what)
 }
 
 void
-capture_program::run(serial_device& dev)
+capture_program::run(serial_device& dev, clock& clk)
 {
   switch (state_) {
     case capture_state::initial:
@@ -48,10 +48,17 @@ capture_program::run(serial_device& dev)
       if (!send(dev, message_id::get_status)) {
         return;
       }
+      timeout_start_ = clk.read();
       next_state();
       break;
     case capture_state::wait_status:
-      read_status(dev);
+      read_status(dev, clk);
+      break;
+    case capture_state::read:
+      request_next_byte(dev, clk);
+      break;
+    case capture_state::read_response:
+      read_next_byte(dev, clk);
       break;
     case capture_state::done:
       break;
@@ -59,10 +66,14 @@ capture_program::run(serial_device& dev)
 }
 
 void
-capture_program::read_status(serial_device& dev)
+capture_program::read_status(serial_device& dev, clock& clk)
 {
   message_packet status_pkt;
   if (!recv(dev, &status_pkt)) {
+    if (elapsed(timeout_start_, clk) > timeout()) {
+      // timeout occurred, try to read the state again
+      state_ = capture_state::status;
+    }
     return;
   }
 
@@ -81,20 +92,67 @@ capture_program::read_status(serial_device& dev)
       state_ = capture_state::initial;
       break;
     case status::running_ack:
+      // request status again
+      state_ = capture_state::status;
       break;
     case status::acq_complete:
       log_info("acquisition done");
       next_state();
       break;
+    default:
+      break;
+  }
+}
+
+void
+capture_program::request_next_byte(serial_device& dev, clock& clk)
+{
+  const uint16_t read_offset = static_cast<uint16_t>(read_buffer_.size());
+
+  if (!send(dev, message_id::read_request, read_offset & 0xff, (read_offset >> 8) & 0xff)) {
+    return;
+  }
+
+  next_state();
+
+  timeout_start_ = clk.read();
+}
+
+void
+capture_program::read_next_byte(serial_device& dev, clock& clk)
+{
+  message_packet pkt;
+
+  if (!recv(dev, &pkt) || pkt.id != message_id::read_response) {
+    if (elapsed(timeout_start_, clk) > timeout()) {
+      state_ = capture_state::read;
+    }
+    return;
+  }
+
+  log_info("received data from sample buffer");
+
+  read_buffer_.emplace_back(pkt.operands[0]);
+
+  if (read_buffer_.size() >= max_read_size()) {
+    next_state();
+  } else {
+    state_ = capture_state::read;
   }
 }
 
 auto
 capture_program::send(serial_device& dev, message_id id, uint8_t op1, uint8_t op2) -> bool
 {
-  uint8_t buffer[3]{ static_cast<uint8_t>(id), op1, op2 };
+  message_packet pkt;
+  pkt.id = id;
+  pkt.operands[0] = op1;
+  pkt.operands[1] = op2;
+  pkt.checksum = pkt.compute_checksum();
 
-  for (auto i = 0; i < 3; i++) {
+  const auto* buffer = reinterpret_cast<const uint8_t*>(&pkt);
+
+  for (auto i = 0; i < sizeof(message_packet); i++) {
     if (!dev.write(buffer[i])) {
       return false;
     }
@@ -106,7 +164,7 @@ capture_program::send(serial_device& dev, message_id id, uint8_t op1, uint8_t op
 auto
 capture_program::recv(serial_device& dev, message_packet* p) -> bool
 {
-  auto* buf = reinterpret_cast<uint8_t*>(&p);
+  auto* buf = reinterpret_cast<uint8_t*>(p);
 
   for (auto i = 0; i < sizeof(message_packet); i++) {
     if (!dev.read(&buf[i])) {

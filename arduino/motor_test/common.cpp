@@ -79,10 +79,12 @@ program::loop_wait(platform& plt)
       break;
     case message_id::reset_state:
       state_ = program_state::wait;
+      send_message(plt, message_id::ack);
       break;
     case message_id::start_acq:
       state_ = program_state::acq;
       sample_offset_ = 0;
+      send_message(plt, message_id::ack);
       break;
     default:
       send_message(plt, message_id::invalid_msg);
@@ -109,12 +111,14 @@ program::loop_acq(platform& plt)
   const auto motor_state = (sample_offset_ / (num_samples() / 4)) % 2;
 
   if (!plt.set_motor_state(!!motor_state)) {
+    state_ = program_state::failed;
     return;
   }
 
   uint32_t t = 0;
 
   if (!plt.get_time(&t)) {
+    state_ = program_state::failed;
     return;
   }
 
@@ -124,6 +128,7 @@ program::loop_acq(platform& plt)
   }
 
   if (!plt.read_magnetometer(&sample_buffer_[sample_offset_ * 3])) {
+    state_ = program_state::failed;
     return;
   }
 
@@ -172,17 +177,34 @@ program::loop_done(platform& plt)
     case message_id::get_status:
       send_message(plt, message_id::status, static_cast<uint8_t>(status::acq_complete));
       break;
+    case message_id::read_request:
+      handle_read_request(plt, pkt);
+      break;
     default:
       send_message(plt, message_id::invalid_msg);
       break;
   }
 }
 
+void
+program::handle_read_request(platform& plt, const message_packet& pkt)
+{
+  const uint16_t offset_lo = static_cast<uint16_t>(pkt.operands[0]);
+  const uint16_t offset_hi = static_cast<uint16_t>(pkt.operands[1]);
+  const uint16_t offset = (offset_hi << 8) | offset_lo;
+  if (offset >= sizeof(sample_buffer_)) {
+    return;
+  }
+  const auto* ptr = reinterpret_cast<const uint8_t*>(&sample_buffer_[0]);
+  const auto data = ptr[offset];
+  send_message(plt, message_id::read_response, data);
+}
+
 auto
 program::read_message(platform& plt, message_packet* p) -> bool
 {
   uint8_t* buffer = reinterpret_cast<uint8_t*>(p);
-  for (auto i = 0; i < sizeof(buffer); i++) {
+  for (auto i = 0; i < sizeof(message_packet); i++) {
     if (!plt.serial_read(&buffer[i])) {
       return false;
     }
@@ -204,7 +226,7 @@ program::send_message(platform& plt, message_id id, uint8_t op1, uint8_t op2)
 
   uint8_t* buffer = reinterpret_cast<uint8_t*>(&pkt);
   for (auto i = 0; i < sizeof(message_packet); i++) {
-    if (plt.serial_write(buffer[i])) {
+    if (!plt.serial_write(buffer[i])) {
       return;
     }
   }

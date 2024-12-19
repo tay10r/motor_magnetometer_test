@@ -21,8 +21,8 @@ public:
   auto read_magnetometer(uint32_t* xyz) -> bool override
   {
     log() << "read magnetometer" << std::endl;
-    xyz[0] = rand_int(32, 4);
-    xyz[1] = rand_int(32, 4);
+    xyz[0] = rand_int(32, 36);
+    xyz[1] = rand_int(32, 36);
     // This isn't really accurate, since it depends on other factors, but that's
     // fine for now.
     const auto z_bias = motor_state_ ? 1024 : 64;
@@ -83,6 +83,8 @@ public:
     return false;
   }
 
+  void loop() { time_ += 1; }
+
 protected:
   [[nodiscard]] auto log() -> std::ostream& { return std::cout << "[" << static_cast<int>(time_) << "]: "; }
 
@@ -111,6 +113,25 @@ private:
   std::vector<std::uint8_t> device_buffer_;
 
   std::vector<std::uint8_t> host_buffer_;
+};
+
+class simulated_clock final : public mt::clock
+{
+public:
+  explicit simulated_clock(simulated_platform* plt)
+    : platform_(plt)
+  {
+  }
+
+  auto read() -> uint32_t override
+  {
+    uint32_t t{};
+    platform_->get_time(&t);
+    return t;
+  }
+
+private:
+  simulated_platform* platform_{};
 };
 
 class simulated_serial_device final : public mt::serial_device
@@ -142,13 +163,17 @@ main() -> int
 
   simulated_serial_device host_dev(&plt);
 
+  simulated_clock host_clk(&plt);
+
   mt::capture_program capture;
 
   while (!capture.done()) {
 
+    capture.run(host_dev, host_clk);
+
     program.loop(plt);
 
-    capture.run(host_dev);
+    plt.loop();
   }
 
   return EXIT_SUCCESS;

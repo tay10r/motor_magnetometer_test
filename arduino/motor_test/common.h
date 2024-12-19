@@ -4,31 +4,6 @@
 
 namespace mt {
 
-struct __attribute__((packed)) packet final
-{
-  uint8_t magic[2];
-
-  uint8_t checksum;
-
-  uint8_t motor_state;
-
-  uint32_t xyz[3];
-
-  uint32_t time;
-
-  packet() { static_assert(sizeof(packet) == 20, "Size of packet is not correct."); }
-
-  [[nodiscard]] auto compute_checksum() const -> uint8_t
-  {
-    auto* ptr = reinterpret_cast<const uint8_t*>(this);
-    uint8_t result = 0;
-    for (uint32_t i = 3; i < sizeof(packet); i++) {
-      result ^= ptr[i];
-    }
-    return result;
-  }
-};
-
 class timer final
 {
 public:
@@ -88,11 +63,12 @@ enum class message_id : uint8_t
   reset_state = 0x00,
   start_acq = 0x01,
   get_status = 0x02,
-  read_data = 0x03,
+  read_request = 0x03,
   // device messages
   ack = 0x80,
   status = 0x81,
-  invalid_msg = 0x82
+  invalid_msg = 0x82,
+  read_response = 0x83
 };
 
 struct message_packet final
@@ -138,8 +114,12 @@ protected:
 
   void loop_done(platform& plt);
 
+  void handle_read_request(platform& plt, const message_packet& pkt);
+
 private:
   program_state state_{ program_state::wait };
+
+  uint32_t last_sample_time_{};
 
   uint32_t sample_offset_{};
 
