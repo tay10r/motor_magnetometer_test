@@ -18,6 +18,8 @@ public:
   {
   }
 
+  void set_debug_led(bool state) override { log() << "debug led state: " << (state ? "on" : "off") << std::endl; }
+
   auto read_magnetometer(uint32_t* xyz) -> bool override
   {
     log() << "read magnetometer" << std::endl;

@@ -73,6 +73,8 @@ program::loop_wait(platform& plt)
     return;
   }
 
+  plt.set_debug_led(true);
+
   switch (pkt.id) {
     case message_id::get_status:
       send_message(plt, message_id::status, static_cast<uint8_t>(status::wait));

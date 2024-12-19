@@ -38,6 +38,8 @@ class platform
 public:
   virtual ~platform() = default;
 
+  virtual void set_debug_led(bool state) = 0;
+
   [[nodiscard]] virtual auto read_magnetometer(uint32_t* xyz) -> bool = 0;
 
   [[nodiscard]] virtual auto get_time(uint32_t* t) -> bool = 0;
@@ -91,7 +93,7 @@ enum class program_state : uint8_t
 constexpr uint32_t
 num_samples()
 {
-  return 1024;
+  return 2;
 }
 
 class program final

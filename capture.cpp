@@ -17,10 +17,17 @@ log_info(const char* what)
 }
 
 void
+log_debug(const char* what)
+{
+  std::cout << "[debug]: " << what << std::endl;
+}
+
+void
 capture_program::run(serial_device& dev, clock& clk)
 {
   switch (state_) {
     case capture_state::initial:
+      log_info("Sending reset message.");
       if (!send(dev, message_id::reset_state)) {
         return;
       }
@@ -33,6 +40,7 @@ capture_program::run(serial_device& dev, clock& clk)
       }
       break;
     case capture_state::start:
+      log_info("Sending start message.");
       if (!send(dev, message_id::start_acq)) {
         return;
       }
